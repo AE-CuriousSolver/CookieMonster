@@ -1,0 +1,136 @@
+SITE OBSERVATIONS
+=================
+What we see when running real websites through the policy link finder.
+Notes for a later design, not a list of edge cases to code for.
+
+Format: site, date checked, what was found, what was odd.
+
+
+PER SITE
+--------
+
+oio.app  (2026-11-07, entered as /careers/qa-tester?utm_source=chatgpt.com;
+          rechecked 2026-11-08)
+- 2026-11-08: footer links sit in a <nav> inside the <footer> ("footer > nav").
+- Clean, obvious links in the footer: Privacy, Cookies, Terms, DPA, Security.
+- Every policy page starts with "Last updated: <date>".
+- Page titles are clear: "Privacy Policy · OIO", "Data Processing Agreement · OIO".
+- Terms page links to Acceptable Use Policy and Cancellation & Refund Policy.
+- Unwanted: "Affiliate terms" (matches "terms") and an Accessibility link.
+- The careers page had the same footer as the homepage.
+
+bbc.co.uk  (2026-11-07)
+- Footer: Privacy Policy, Cookies, Terms of Use, Accessibility Help.
+- Policies live on bbc.com while the homepage is bbc.co.uk.
+- Privacy page is a hub of FAQ links ("What are my rights?", "How long will
+  you keep my information?") instead of one document. The full policy is a
+  separate link: "View the full version of the BBC Privacy Policy".
+- Separate children's privacy policy.
+- Same pages in multiple languages (Welsh "Cymraeg", Gaelic "Gàidhlig").
+- Page titles are friendly, not formal: "Keeping your info safe and sound",
+  "A few rules for us and you".
+- 2026-11-08: policy links are in a plain <footer>. A homepage article
+  "Do you know these Gen Alpha terms?" was picked up (matches "terms").
+  None of the BBC policy pages say "Last updated", so that signal isn't
+  universal.
+
+github.com  (2026-11-07)
+- Privacy and Terms links go to a separate docs site (docs.github.com).
+- Many false positives from "security": product pages (Advanced Security,
+  Code Security) and a customer story that mentions security.
+- Homepage shows trending repos, so a repo with "privacy" in its name was
+  picked up once. The homepage content changes between visits.
+- Docs pages have a sidebar listing ~100 policies, all with /site-policy/ in
+  the path. Reading the whole page picked up all of them.
+- Uses "Privacy Statement" rather than "Privacy Policy".
+- Some policies are PDFs (e.g. a French privacy statement).
+- Has a Trust Center that mentions privacy a lot.
+
+mozilla.org  (2026-11-07)
+- Uses "Privacy Notice" rather than "Privacy Policy".
+- A separate privacy notice per product (Firefox, Mozilla accounts, websites).
+- Homepage news articles about "Privacy & Security" were picked up as links.
+- The Firefox product link has "privacy" in its text ("gold standard for
+  browsing privacy"), so it was picked up, then its own links were followed.
+- "Legal" page is an index linking to many separate terms documents.
+- "Community Participation Guidelines" matched only because the path has
+  /policies/.
+
+example.com  (2026-11-07)
+- No links at all in the page. Nothing to find.
+
+
+PATTERNS ACROSS SITES
+---------------------
+- Naming varies: Policy / Notice / Statement / Agreement / Promise.
+- Some sites have one document per topic; others have a hub page, an FAQ, or
+  a separate document per product.
+- Policies are often on a different domain or subdomain from the homepage
+  (bbc.com, docs.github.com).
+- Same policy in several languages.
+- Matching words in the link text or path catches product pages, news and
+  marketing pages, especially for "security".
+- Counting words on the page doesn't separate real policies from product
+  pages: GitHub's security product pages say "security" more often than its
+  real Trust Center does.
+- Page titles and a "Last updated" / "Effective date" line look like
+  stronger signals of a real policy.
+- Following links from policy pages finds real extra policies (DPA,
+  subprocessors, acceptable use), but it also amplifies false positives.
+
+
+SEARCH RESULTS  (Supabase: link_searches, link_candidates)
+--------------
+Every new search is saved to Supabase (replaced the earlier CSV log):
+- link_searches: one row per search, including failed ones.
+- link_candidates: one row per link found, with a "helpful" column set by
+  the Yes / No buttons in the app (null = not reviewed yet).
+
+Not saved: invalid input (e.g. "not a url"), and repeat searches of the same
+site within 5 minutes (those reuse the earlier result).
+
+found_in: which part of the page the link was in (footer, header, nav,
+main, aside, or "page body" if none). Only real HTML tags count, so a
+footer built from <div class="footer"> shows as "page body".
+
+
+FUTURE IDEA: SCORE LINKS, KEEP THE STRONGEST  (not built yet)
+----------------------------------------------------------
+Instead of listing every link that matches and then trying to exclude the
+wrong ones, give each link a strength score and return only the strongest
+link per type of policy (privacy, cookies, terms, data/DPA, security…).
+
+Why:
+- Several links often point at the same policy (BBC: a privacy hub, FAQ
+  pages, language versions, and the full policy). We only need the best one.
+- Exclusion lists need constant upkeep; picking the strongest match doesn't.
+- Once a strong match is found for a type, stop looking for more of that type.
+  "Terms" and "policy" are generic words, but they're only needed until
+  something stronger turns up.
+
+Possible signals for a score (to be decided from the search log):
+- Where the link is: footer vs main content vs found on a policy page.
+- Link text: specific ("Privacy Policy", "Cookie Policy") vs generic
+  ("Terms", "Legal") vs a question/FAQ ("What are my rights?").
+- Linked page's title and headings (see below).
+- Page says "Last updated" / "Effective date" (common, but not on BBC).
+- Same site vs another domain.
+
+Questions the search log should help answer:
+- Are full policies mostly linked in the footer?
+- Which words appear in the strongest links' text and titles?
+- How often is the best link only found one level deep?
+
+
+IDEAS FOR LATER DESIGN
+----------------------
+- Check page titles and headings rather than only words in link text and
+  path.
+- Always check the site's root page too, not only the URL entered (careers
+  and landing pages can have different footers).
+- Known standards worth reading up on:
+  - California law (CalOPPA) expects a homepage link containing the word
+    "privacy", which may be why that link is so consistent.
+  - /.well-known/security.txt is a standard place for security contact info.
+- Languages: decide whether to detect them, prefer English, or group the
+  same page in different languages.
