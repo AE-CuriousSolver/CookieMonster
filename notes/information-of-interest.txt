@@ -1,0 +1,7 @@
+Places companies define data and sharing conditions"
+- privacy policy 
+- terms of use / terms & conditions / terms of service 
+- cookie policy/tracking notice 
+- End-User licsence agreement (downloads can have data collection conditions)
+- Data processing agreement 
+- Acceptible use policy (branch of Terms of service)

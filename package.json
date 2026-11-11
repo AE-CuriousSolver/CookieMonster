@@ -7,9 +7,11 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"lib/**/*.test.ts\""
+    "test": "node --disable-warning=MODULE_TYPELESS_PACKAGE_JSON --test \"lib/**/*.test.ts\"",
+    "check-urls": "node --env-file-if-exists=.env.local --disable-warning=MODULE_TYPELESS_PACKAGE_JSON scripts/check-urls.ts"
   },
   "dependencies": {
+    "@google/genai": "^3.0.0",
     "@supabase/supabase-js": "^2.119.0",
     "next": "16.4.5",
     "react": "19.3.0",
