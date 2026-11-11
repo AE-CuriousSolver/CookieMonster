@@ -4,8 +4,10 @@ import { test } from "node:test";
 import {
   countCategoryWords,
   findLinkTo,
+  findLinkedPolicyLinks,
   findPolicyLinks,
   looksLikeBlockPage,
+  normaliseUrl,
 } from "./policy-links.ts";
 
 const fixture = (name: string) =>
@@ -13,15 +15,79 @@ const fixture = (name: string) =>
 
 const PAGE = "https://acme.example/";
 
-test("finds policy links in a typical footer", () => {
+test("finds privacy, cookie and terms links in a typical footer, best first", () => {
   const links = findPolicyLinks(fixture("footer-links.html"), PAGE);
-  assert.deepEqual(links.map((link) => link.url).sort(), [
-    "https://acme.example/cookies",
-    "https://acme.example/dpa",
-    "https://acme.example/privacy",
-    "https://acme.example/trust-center",
-    "https://acme.example/your-data",
-    "https://legal.acme.example/terms-of-service",
+  assert.deepEqual(
+    links.map((link) => [link.url, link.categories, link.score]),
+    [
+      ["https://acme.example/privacy", ["privacy"], 10],
+      ["https://acme.example/cookies", ["cookie"], 8],
+      ["https://legal.acme.example/terms-of-service", ["terms"], 8],
+      ["https://acme.example/privacy/how-we-use-data", ["privacy"], 5],
+    ],
+  );
+  assert.ok(links.every((link) => link.location === "footer"));
+});
+
+test("drops excluded words, even with a topic word", () => {
+  const html = `<footer>
+    <a href="/legal/returns-terms">Returns terms</a>
+    <a href="/promotion-terms">Promotion T&amp;Cs</a>
+    <a href="/help/faq-privacy">Privacy FAQ</a>
+    <a href="/accessibility">Accessibility statement</a>
+    <a href="/terms">Terms</a></footer>`;
+  assert.deepEqual(
+    findPolicyLinks(html, PAGE).map((link) => link.url),
+    ["https://acme.example/terms"],
+  );
+});
+
+test("document words add points but never make a link a candidate", () => {
+  const html = '<a href="/acceptable-use">Acceptable Use Policy</a><a href="/data">Your data</a>';
+  assert.deepEqual(findPolicyLinks(html, PAGE), []);
+});
+
+test("only uses footer links when the footer has any", () => {
+  const html = `
+    <header><a href="/privacy-centre">Privacy centre</a></header>
+    <footer><a href="/privacy">Privacy</a></footer>`;
+  const links = findPolicyLinks(html, PAGE);
+  assert.deepEqual(links.map((link) => link.url), ["https://acme.example/privacy"]);
+  assert.equal(links[0].location, "footer");
+});
+
+test("uses the whole page when there's no footer, or nothing useful in it", () => {
+  for (const html of [
+    '<nav><a href="/privacy">Privacy</a></nav>',
+    '<footer><a href="/blog">Blog</a></footer><nav><a href="/privacy">Privacy</a></nav>',
+  ]) {
+    const [link] = findPolicyLinks(html, PAGE);
+    assert.equal(link.location, "page");
+    assert.equal(link.score, 1 + 3 + 2);
+  }
+});
+
+test("matches tracking and conditions, and allows two categories", () => {
+  const html = `<footer>
+    <a href="/legal/tracking">Tracking notice</a>
+    <a href="/conditions-of-use">Conditions of Use</a>
+    <a href="/privacy-and-cookies">Privacy &amp; Cookies</a></footer>`;
+  const categories = Object.fromEntries(
+    findPolicyLinks(html, PAGE).map((link) => [new URL(link.url).pathname, link.categories]),
+  );
+  assert.deepEqual(categories, {
+    "/legal/tracking": ["cookie"],
+    "/conditions-of-use": ["terms"],
+    "/privacy-and-cookies": ["privacy", "cookie"],
+  });
+});
+
+test("records which words matched and where", () => {
+  const html = '<a href="/legal/privacy-policy">Your Privacy</a>';
+  assert.deepEqual(findPolicyLinks(html, PAGE)[0].matches, [
+    { category: "privacy", keyword: "Privacy", where: "text" },
+    { category: "privacy", keyword: "privacy", where: "path" },
+    { category: "document", keyword: "policy", where: "path" },
   ]);
 });
 
@@ -39,12 +105,17 @@ test("merges duplicates and keeps the longest text", () => {
   assert.equal(privacy[0].text, "Privacy Policy");
 });
 
-test("treats a trailing slash, www and query strings as the same page", () => {
+test("treats a trailing slash, www, query strings and hashes as the same page", () => {
   const html =
-    '<a href="/privacy/?cid=footer">Privacy</a><a href="https://www.acme.example/privacy">Privacy</a>';
+    '<a href="/privacy/?cid=footer#top">Privacy</a><a href="https://www.acme.example/privacy">Privacy</a>';
   const links = findPolicyLinks(html, PAGE);
   assert.equal(links.length, 1);
-  assert.equal(links[0].url, "https://www.acme.example/privacy");
+  assert.equal(links[0].url, "https://acme.example/privacy");
+});
+
+test("normalises URLs", () => {
+  assert.equal(normaliseUrl("https://acme.example/privacy/?a=1#b"), "https://acme.example/privacy");
+  assert.equal(normaliseUrl("https://acme.example/"), "https://acme.example");
 });
 
 test("decodes entities and falls back to the path for image links", () => {
@@ -52,41 +123,6 @@ test("decodes entities and falls back to the path for image links", () => {
   const textFor = (url: string) => links.find((link) => link.url === url)?.text;
   assert.equal(textFor("https://legal.acme.example/terms-of-service"), "Terms & Conditions");
   assert.equal(textFor("https://acme.example/cookies"), "cookies");
-});
-
-test("assigns categories", () => {
-  const links = findPolicyLinks(fixture("footer-links.html"), PAGE);
-  const categoriesFor = (url: string) => links.find((link) => link.url === url)?.categories;
-  assert.deepEqual(categoriesFor("https://acme.example/cookies"), ["cookies"]);
-  assert.deepEqual(categoriesFor("https://acme.example/trust-center"), ["security"]);
-  assert.deepEqual(categoriesFor("https://acme.example/dpa"), ["data"]);
-  assert.equal(categoriesFor("https://acme.example/accessibility"), undefined);
-  assert.equal(categoriesFor("https://acme.example/affiliates/terms"), undefined);
-});
-
-test("records which word matched and where", () => {
-  const html = '<a href="/legal/privacy-policy">Your Privacy</a>';
-  assert.deepEqual(findPolicyLinks(html, PAGE)[0].matches, [
-    { category: "privacy", keyword: "Privacy", where: "text" },
-    { category: "privacy", keyword: "privacy", where: "path" },
-    { category: "terms", keyword: "legal", where: "path" },
-    { category: "policy", keyword: "policy", where: "path" },
-  ]);
-});
-
-test("records which part of the page each link sat in", () => {
-  const html = `
-    <header><a href="/privacy">Privacy</a></header>
-    <p><a href="/terms">Terms</a></p>
-    <footer><nav><a href="/cookies">Cookies</a></nav><a href="/privacy">Privacy</a></footer>`;
-  const foundIn = Object.fromEntries(
-    findPolicyLinks(html, PAGE).map((link) => [new URL(link.url).pathname, link.foundIn]),
-  );
-  assert.deepEqual(foundIn, {
-    "/privacy": ["header", "footer"],
-    "/terms": ["page body"],
-    "/cookies": ["footer > nav"],
-  });
 });
 
 test("does not match on the domain name", () => {
@@ -120,12 +156,11 @@ test("recognises bot-check pages", () => {
   assert.equal(looksLikeBlockPage(fixture("footer-links.html")), false);
 });
 
-test("counts our words in page text, most frequent first", () => {
-  const counts = countCategoryWords("Privacy matters. Our privacy policy and DPA. Privacy!");
+test("counts topic words in page text, most frequent first", () => {
+  const counts = countCategoryWords("Privacy matters. Our privacy policy and cookies. Privacy!");
   assert.deepEqual(counts, [
     { category: "privacy", keyword: "privacy", count: 3 },
-    { category: "data", keyword: "dpa", count: 1 },
-    { category: "policy", keyword: "policy", count: 1 },
+    { category: "cookie", keyword: "cookie", count: 1 },
   ]);
 });
 
@@ -141,4 +176,27 @@ test("finds a specific link on a page, whatever its wording", () => {
 test("decodes common punctuation entities in link text", () => {
   const html = '<a href="/terms">Terms &ndash; Acme&rsquo;s rules</a>';
   assert.equal(findPolicyLinks(html, PAGE)[0].text, "Terms – Acme’s rules");
+});
+
+test("marks gateway links in the footer, only by their text", () => {
+  const html = `<footer>
+    <a href="/legal/">All legal documents</a>
+    <a href="/legal/fscs-protection">FSCS Protection</a>
+    <a href="/legal/privacy-notice">Privacy Notice</a></footer>`;
+  assert.deepEqual(
+    findPolicyLinks(html, PAGE).map((link) => [link.url, link.gateway ?? false]),
+    [
+      ["https://acme.example/legal/privacy-notice", false],
+      ["https://acme.example/legal", true],
+    ],
+  );
+});
+
+test("finds linked links without gateways, located as linked", () => {
+  const html = '<a href="/legal">Legal</a><a href="/privacy-policy">Full privacy policy</a>';
+  const links = findLinkedPolicyLinks(html, PAGE);
+  assert.deepEqual(
+    links.map((link) => [link.url, link.location, link.score]),
+    [["https://acme.example/privacy-policy", "linked", 2 + 3 + 2 + 2 + 1]],
+  );
 });

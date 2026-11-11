@@ -7,7 +7,7 @@ export default function Home() {
       <div className="flex flex-col gap-2">
         <h1 className="text-3xl font-semibold">Cookie Monster</h1>
         <p className="text-zinc-600 dark:text-zinc-400">
-          Enter a website to find its privacy, terms, security and similar policies.
+          Enter a website to find its privacy, cookie and terms pages.
         </p>
       </div>
       <PolicyLinkForm canAddMissedLinks={missedLinksEnabled()} />

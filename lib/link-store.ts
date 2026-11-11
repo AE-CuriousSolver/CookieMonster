@@ -35,9 +35,11 @@ export function candidateRows(searchId: number, result: LookupResult) {
     link_url: link.url,
     categories: link.categories,
     matched_words: link.matches,
-    found_in: link.foundIn,
+    found_in: [link.location],
     found_on_url: link.foundOn ?? result.pageUrl,
     depth: link.foundOn ? 1 : 0,
+    score: link.score,
+    final_url: link.finalUrl,
     page_title: link.page.status === "read" ? link.page.title || null : null,
     mentions_last_updated:
       link.page.status === "read" ? link.page.mentionsLastUpdated : null,

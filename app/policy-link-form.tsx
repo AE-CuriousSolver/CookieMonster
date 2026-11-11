@@ -2,6 +2,8 @@
 
 import { useActionState, useState, useTransition } from "react";
 import type { CheckedLink } from "@/lib/check-policy-pages";
+import type { PolicyCategory } from "@/lib/link-rules";
+import { groupByCategory, type CategoryGroup } from "@/lib/link-score";
 import { addMissedLink, checkUrl, markHelpful, type FormState } from "./actions";
 
 const initialState: FormState = { status: "idle" };
@@ -48,11 +50,9 @@ export function PolicyLinkForm({ canAddMissedLinks }: { canAddMissedLinks: boole
             Found {state.links.length} {state.links.length === 1 ? "link" : "links"} on{" "}
             {state.pageUrl}
           </h2>
-          <ul className="flex flex-col gap-4">
-            {state.links.map((link) => (
-              <LinkResult key={link.url} link={link} />
-            ))}
-          </ul>
+          {groupByCategory(state.links).map((group) => (
+            <CategoryResult key={group.category} group={group} />
+          ))}
         </section>
       )}
 
@@ -122,6 +122,36 @@ function MissedLinkForm({ searchId }: { searchId: number }) {
   );
 }
 
+const CATEGORY_NAMES: Record<PolicyCategory, string> = {
+  privacy: "Privacy",
+  cookie: "Cookies",
+  terms: "Terms",
+};
+
+/** The best link for one category, with the others behind "Show more". */
+function CategoryResult({ group }: { group: CategoryGroup<CheckedLink> }) {
+  return (
+    <div className="flex flex-col gap-2 border-t border-zinc-300 pt-3 dark:border-zinc-700">
+      <h3 className="font-semibold">{CATEGORY_NAMES[group.category]}</h3>
+      <ul>
+        <LinkResult link={group.best} />
+      </ul>
+      {group.others.length > 0 && (
+        <details>
+          <summary className="cursor-pointer text-sm text-zinc-600 dark:text-zinc-400">
+            Show {group.others.length} more
+          </summary>
+          <ul className="mt-3 flex flex-col gap-4 pl-4">
+            {group.others.map((link) => (
+              <LinkResult key={link.url} link={link} />
+            ))}
+          </ul>
+        </details>
+      )}
+    </div>
+  );
+}
+
 function LinkResult({ link }: { link: CheckedLink }) {
   const title = link.page.status === "read" && link.page.title ? link.page.title : link.text;
 
@@ -131,9 +161,13 @@ function LinkResult({ link }: { link: CheckedLink }) {
         {title}
       </a>
       <p className="text-sm text-zinc-600 dark:text-zinc-400">
-        {link.categories.join(", ")} · in the {link.foundIn.join(", ")}
-        {link.foundOn && " of a linked policy page"}
+        Score {link.score} ·{" "}
+        {link.foundOn ? `linked from ${link.foundOn}` : `in the ${link.location}`} ·{" "}
+        {link.categories.join(", ")}
       </p>
+      {link.finalUrl && link.finalUrl !== link.url && (
+        <p className="text-sm text-zinc-600 dark:text-zinc-400">Redirects to {link.finalUrl}</p>
+      )}
       {link.page.status === "unreadable" && (
         <p className="text-sm text-amber-700 dark:text-amber-300">
           Couldn&rsquo;t read the page: {link.page.message}

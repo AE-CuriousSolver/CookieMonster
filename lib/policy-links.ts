@@ -1,24 +1,17 @@
-export const POLICY_CATEGORIES = [
-  "privacy",
-  "cookies",
-  "terms",
-  "data",
-  "access",
-  "security",
-  // Experimental: to see how many policies the word "policy" alone would catch.
-  "policy",
-] as const;
+import {
+  categoriesOf,
+  compareLinks,
+  isExcluded,
+  isGateway,
+  matchWords,
+  mergeMatches,
+  scoreFor,
+  type LinkLocation,
+  type PolicyMatch,
+} from "./link-score.ts";
+import { POLICY_CATEGORIES, TOPIC_WORDS, type PolicyCategory } from "./link-rules.ts";
 
-export type PolicyCategory = (typeof POLICY_CATEGORIES)[number];
-
-/** Why a link was picked: which word matched, and where. For checking results. */
-export type PolicyMatch = {
-  category: PolicyCategory;
-  keyword: string;
-  where: "text" | "path";
-};
-
-/** How often one of our words appears in a page's text. */
+/** How often one of our topic words appears in a page's text. */
 export type WordCount = {
   category: PolicyCategory;
   keyword: string;
@@ -26,51 +19,18 @@ export type WordCount = {
 };
 
 export type PolicyLink = {
+  /** Without ?query, #hash or a trailing slash. */
   url: string;
   text: string;
   categories: PolicyCategory[];
+  /** Why a link was picked: which words matched, and where. */
   matches: PolicyMatch[];
-  /** Which parts of the page the link sat in, e.g. "footer" or "footer > nav". */
-  foundIn: string[];
+  location: LinkLocation;
+  /** How likely this is the right document. Weights are in link-rules.ts. */
+  score: number;
+  /** A page like "All legal documents": opened to find policies, never a result. */
+  gateway?: boolean;
 };
-
-const CATEGORY_PATTERNS: Record<PolicyCategory, RegExp[]> = {
-  privacy: [
-    /privacy/i,
-    /\bgdpr\b/i,
-    /\bccpa\b/i,
-    /\bcpra\b/i,
-  ],
-  cookies: [/cookie/i],
-  terms: [
-    /\bterms\b/i,
-    /terms[-_\s]?(of|and|conditions)/i,
-    /\beula\b/i,
-    /\blegal\b/i,
-  ],
-  data: [
-    /data[-_\s]?protection/i,
-    /data[-_\s]?policy/i,
-    /data[-_\s]?processing/i,
-    /personal[-_\s]?(data|information)/i,
-    /subject[-_\s]?access/i,
-    /do[-_\s]?not[-_\s]?sell/i,
-    /\bdpa\b/i,
-  ],
-  access: [/access[-_\s]?policy/i, /subject[-_\s]?access/i],
-  security: [
-    /security/i,
-    /trust[-_\s]?cent(er|re)/i,
-    /responsible[-_\s]?disclosure/i,
-    /vulnerability/i,
-    /bug[-_\s]?bounty/i,
-  ],
-  policy: [/polic(y|ies)/i],
-};
-
-// Links we never want, even when they match a category, e.g. "Affiliate terms".
-// Checked against the link text and path.
-const EXCLUDED_PATTERNS: RegExp[] = [/affiliate/i];
 
 const MAX_LINK_HTML_LENGTH = 2000;
 
@@ -79,10 +39,73 @@ const MAX_LINK_HTML_LENGTH = 2000;
 const PAGE_SECTIONS = ["header", "nav", "main", "aside", "footer"];
 const MAX_SECTIONS = 200;
 
+/**
+ * Finds privacy, cookie and terms links on a homepage, plus gateway links like
+ * "All legal documents" (gateway: true, no categories). If the page has a
+ * <footer> with any of these, only footer links are used; otherwise the whole
+ * page. Sorted best first.
+ */
 export function findPolicyLinks(html: string, pageUrl: string): PolicyLink[] {
-  const base = new URL(pageUrl);
+  const footers = findSections(html).filter((section) => section.name === "footer");
+  const all = readPolicyAnchors(html, pageUrl);
+  const inFooter = all.filter((anchor) =>
+    footers.some((footer) => footer.start <= anchor.index && anchor.index < footer.end),
+  );
+  return inFooter.length > 0 ? collect(inFooter, "footer") : collect(all, "page");
+}
+
+/**
+ * Policy links on a page the homepage links to, e.g. a privacy hub's link to
+ * the full policy. Pass only the page's main content. No gateways: we only go
+ * one level deep.
+ */
+export function findLinkedPolicyLinks(html: string, pageUrl: string): PolicyLink[] {
+  return collect(
+    readPolicyAnchors(html, pageUrl).filter((anchor) => !anchor.gateway),
+    "linked",
+  );
+}
+
+type Anchor = ReturnType<typeof readPolicyAnchors>[number];
+
+/** Merges links to the same page and scores them. Best first. */
+function collect(anchors: Anchor[], location: LinkLocation): PolicyLink[] {
   const found = new Map<string, PolicyLink>();
-  const sections = findSections(html);
+  for (const { url, text, matches, gateway } of anchors) {
+    const key = linkKey(url);
+    const existing = found.get(key);
+    if (existing) {
+      existing.matches = mergeMatches(existing.matches, matches);
+      existing.categories = categoriesOf(existing.matches);
+      existing.score = scoreFor(location, existing.matches);
+      if (existing.gateway && !gateway) delete existing.gateway;
+      if (existing.text.length < text.length) existing.text = text;
+      if (url.length < existing.url.length) existing.url = url;
+      continue;
+    }
+    found.set(key, {
+      url,
+      text,
+      categories: categoriesOf(matches),
+      matches,
+      location,
+      score: scoreFor(location, matches),
+      ...(gateway && { gateway }),
+    });
+  }
+  return [...found.values()].sort(compareLinks);
+}
+
+/** Every web link on the page with a topic word, or a gateway word in its text. */
+function readPolicyAnchors(html: string, pageUrl: string) {
+  const base = new URL(pageUrl);
+  const result: {
+    index: number;
+    url: string;
+    text: string;
+    matches: PolicyMatch[];
+    gateway: boolean;
+  }[] = [];
 
   for (const anchor of readAnchors(html)) {
     const href = readHref(anchor.attributes);
@@ -94,49 +117,31 @@ export function findPolicyLinks(html: string, pageUrl: string): PolicyLink[] {
     } catch {
       continue;
     }
+    if (absolute.protocol !== "http:" && absolute.protocol !== "https:") continue;
 
-    if (absolute.protocol !== "http:" && absolute.protocol !== "https:") {
-      continue;
-    }
-
-    absolute.hash = "";
+    const url = normaliseUrl(absolute);
     const text = linkText(anchor.innerHtml, absolute);
+    const path = new URL(url).pathname;
     // Only the link text and path: the domain would match every link on a site
     // like cookies.com.
-    const matches = matchesFor(text, absolute.pathname);
-    if (matches.length === 0) continue;
-    if (isExcluded(text, absolute.pathname)) continue;
+    const matches = mergeMatches([], [...matchWords(text, "text"), ...matchWords(path, "path")]);
+    const isCandidate = categoriesOf(matches).length > 0;
+    const gateway = !isCandidate && isGateway(text);
+    if (!isCandidate && !gateway) continue;
+    if (isExcluded(text, path)) continue;
 
-    const url = absolute.toString();
-    const key = linkKey(url);
-    const where = sectionAt(sections, anchor.index);
-    const existing = found.get(key);
-    if (existing) {
-      existing.matches = mergeMatches(existing.matches, matches);
-      existing.categories = categoriesOf(existing.matches);
-      if (!existing.foundIn.includes(where)) existing.foundIn.push(where);
-      if (existing.text.length < text.length) existing.text = text;
-      // Prefer the cleanest version, e.g. without "?cid=footer" tracking.
-      if (url.length < existing.url.length) existing.url = url;
-      continue;
-    }
-
-    found.set(key, {
-      url,
-      text,
-      categories: categoriesOf(matches),
-      matches,
-      foundIn: [where],
-    });
+    result.push({ index: anchor.index, url, text, matches, gateway });
   }
+  return result;
+}
 
-  return [...found.values()].sort((a, b) => {
-    const categoryOrder =
-      POLICY_CATEGORIES.indexOf(a.categories[0]) -
-      POLICY_CATEGORIES.indexOf(b.categories[0]);
-    if (categoryOrder !== 0) return categoryOrder;
-    return a.text.localeCompare(b.text);
-  });
+/** Drops the ?query, #hash and trailing slash: "/privacy/?cid=x#top" → "/privacy". */
+export function normaliseUrl(url: URL | string): string {
+  const parsed = new URL(url);
+  parsed.search = "";
+  parsed.hash = "";
+  const href = parsed.toString();
+  return parsed.pathname === "/" ? href.replace(/\/$/, "") : href.replace(/\/+$/, "");
 }
 
 /**
@@ -183,11 +188,11 @@ export function linkKey(url: string): string {
   return parsed.hostname.replace(/^www\./, "") + parsed.pathname.replace(/\/$/, "");
 }
 
-/** Counts our category words in a page's text, most frequent first. */
+/** Counts our topic words in a page's text, most frequent first. */
 export function countCategoryWords(text: string): WordCount[] {
   const counts: WordCount[] = [];
   for (const category of POLICY_CATEGORIES) {
-    for (const pattern of CATEGORY_PATTERNS[category]) {
+    for (const pattern of TOPIC_WORDS[category]) {
       for (const [found] of text.matchAll(new RegExp(pattern.source, "gi"))) {
         const keyword = found.toLowerCase();
         const existing = counts.find(
@@ -279,44 +284,6 @@ function sectionAt(sections: Section[], index: number): string {
   return containing.length > 0
     ? containing.map((section) => section.name).join(" > ")
     : "page body";
-}
-
-function isExcluded(text: string, path: string): boolean {
-  return EXCLUDED_PATTERNS.some((pattern) => pattern.test(text) || pattern.test(path));
-}
-
-function matchesFor(text: string, path: string): PolicyMatch[] {
-  const matches: PolicyMatch[] = [];
-  for (const category of POLICY_CATEGORIES) {
-    for (const pattern of CATEGORY_PATTERNS[category]) {
-      for (const [where, value] of [["text", text], ["path", path]] as const) {
-        const keyword = pattern.exec(value)?.[0];
-        if (keyword) matches.push({ category, keyword, where });
-      }
-    }
-  }
-  return mergeMatches([], matches);
-}
-
-/** Drops repeats, e.g. "privacy" in the text of two links to the same page. */
-export function mergeMatches(current: PolicyMatch[], next: PolicyMatch[]): PolicyMatch[] {
-  const merged = [...current];
-  for (const match of next) {
-    const isRepeat = merged.some(
-      (seen) =>
-        seen.category === match.category &&
-        seen.where === match.where &&
-        seen.keyword.toLowerCase() === match.keyword.toLowerCase(),
-    );
-    if (!isRepeat) merged.push(match);
-  }
-  return merged;
-}
-
-export function categoriesOf(matches: PolicyMatch[]): PolicyCategory[] {
-  return POLICY_CATEGORIES.filter((category) =>
-    matches.some((match) => match.category === category),
-  );
 }
 
 function readHref(attributes: string): string | null {

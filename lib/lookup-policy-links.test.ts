@@ -40,7 +40,7 @@ test("returns links from the fetched homepage", async () => {
   );
   assert.equal(result.status, "found");
   assert.ok(result.status === "found");
-  assert.equal(result.links.filter((link) => !link.foundOn).length, 6);
+  assert.equal(result.links.length, 4);
 });
 
 test("resolves relative links against the page we were redirected to", async () => {

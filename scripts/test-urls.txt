@@ -1,0 +1,26 @@
+# One website per line. Blank lines and lines starting with # are ignored.
+# Run with: npm run check-urls
+https://ekko.earth
+https://oio.app/careers/qa-tester?utm_source=chatgpt.com
+https://www.bbc.com
+https://www.meetup.com/en-AU/
+https://www.qbd.com.au
+https://www.temu.com
+https://www.commbank.com.au/
+https://www.lloydsbankinggroup.com/
+https://www.starlingbank.com/
+http://linkedin.com/
+https://www.wildlifesydney.com.au/
+https://www.trademe.co.nz/a/?srsltid=AYCX9vK8CTQCYz_lsts-slzqeJ6vjRkraGMrzAGeDM8zNlDb12oas51y
+https://www.recipetineats.com/category/cake-recipes/
+https://www.quickcashforcars.sydney/?keyword=we%20buy%20your%20car&matchtype=b&device=c&gad_source=1&gad_campaignid=11602655998&gbraid=0AAAAAByIccKfQcFut47xUpc9Xw_LeGwJ4&gclid=Cj0KCQiAnsvXBhCqARIsAHKgGNbLXFrtfZSBOKheSj2SFvmdClY5mbENdOMQaTVZ18dvCja_OkD7cxQaAqVzEALw_wcB
+https://au.trustpilot.com/review/www.webuyanycar.com
+https://insurance.qantas.com/home-insurance?utm_medium=paid-search-gen&utm_source=google&utm_campaign=ct-bau_cst-35k-pts_vt-ins-home_dt-sep-26&utm_content=cn-offer-led_pt-none&gclsrc=aw.ds&gad_source=1&gad_campaignid=19939505488&gbraid=0AAAAACMz6tlUqOV8YhjwAW_XnuIRhO5Uz&gclid=Cj0KCQiAnsvXBhCqARIsAHKgGNauM1IZGARVN-cKxUhH3aZuh4xanKOFVRcdvKQuO4bjn2Vz2THk8CYaAlz1EALw_wcB
+https://quotetool.nobleoak.com.au/quote-builder?utm_source=google&utm_medium=new-search-life&utm_campaign=nol-lif-bof-life-insurance-quote-p&gclsrc=aw.ds&gad_source=1&gad_campaignid=22270777140&gbraid=0aaaaadporudu6btj0bg0gq0hrjouommdh&gclid=cj0kcqiansvxbhcqarisahkggnzj7b4dv2ahkr6ybcnrsap5hjd0migsh9kpbp1qqfuwqfiig1n6b7qaalwwealw_wcb
+https://www.emirates.com/au/english/
+https://www.csair.com/au/en/index.shtml
+https://www.christianandroy.com.au/?gad_source=1&gad_campaignid=14878696779&gbraid=0AAAAAoLtM00ZkTe0UD18dHyY3d4N5htFW&gclid=Cj0KCQiAnsvXBhCqARIsAHKgGNbanLcDLgJtUJHxqiC-BI6uNQmlxXfPAmwjCf9cbCw04Cm8QmltZa4aAhEPEALw_wcB
+https://www.lego.com/en-au?cmp=KAC-INI-GOOGAPAC-GO-AU-EN-BR-PS-CLICK-CREATE-MB_ALWAYS_ON-SHOP-GP-MM-ALL-CIDNA00000-MB-TOYS_OTHER-GEND-MBO&ef_id=Cj0KCQiAnsvXBhCqARIsAHKgGNYIRXB5kP3598jsYZrX3C8IW7FxikrxR81EOsosCpwGANW4IBDUfIYaAsYbEALw_wcB%3AG%3As&gad_campaignid=22122032153&gad_source=1&gbraid=0AAAAADESMXJQaTlsacugKPktdbEwe9arV&gclid=Cj0KCQiAnsvXBhCqARIsAHKgGNYIRXB5kP3598jsYZrX3C8IW7FxikrxR81EOsosCpwGANW4IBDUfIYaAsYbEALw_wcB&gclsrc=aw.ds&s_kwcid=AL%2117809%213%21827460173942%21e%21%21g%21%21kids+toys%2122122032153%21170270815661
+https://www.kmart.com.au/?srsltid=AYCX9vKGDz3kCWSSBsfHAENEVn0D4uHY8HkOtiuJMOcr6Eyd7lceITBT
+https://www.ted.com/
+

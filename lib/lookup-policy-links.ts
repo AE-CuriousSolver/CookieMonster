@@ -47,6 +47,8 @@ async function fetchAndFind(url: URL, deps?: FetchDeps): Promise<LookupResult> {
   if (links.length === 0) return { status: "failed", message: noLinksMessage(page.html) };
 
   const checked = await checkPolicyPages(page.url, links, deps);
+  // Only gateway links (e.g. "Legal") and nothing useful behind them.
+  if (checked.length === 0) return { status: "failed", message: noLinksMessage(page.html) };
   return { status: "found", pageUrl: page.url, links: checked };
 }
 
@@ -57,5 +59,5 @@ function noLinksMessage(html: string): string {
   if (!/<a\b/i.test(html)) {
     return "We didn't find any links on this page. The site may add them with JavaScript, which we can't read yet.";
   }
-  return "We read the homepage but found no privacy, terms, security or similar policy links.";
+  return "We read the homepage but found no privacy, cookie or terms links.";
 }
